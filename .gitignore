@@ -1,0 +1,56 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+
+# ===== Virtual environments =====
+.venv/
+reference-venv/
+
+# ===== Tool caches =====
+.uv-cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ===== Testing & coverage =====
+.coverage
+htmlcov/
+
+# ===== Playwright =====
+# Playwright downloads browser binaries to a local cache
+.playwright/
+
+# ===== IDE / editor =====
+.idea/
+.vscode/
+*.sw[pso]
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== Secrets / env =====
+.env
+.env.*
+.python-version
+
+# ===== Logs =====
+*.log
+
+# ===== Project-specific =====
+# Downloaded pin images — large, regenerable
+downloads/
+# Reference projects for study, not part of our source
+reference_project/
+# Temporary working directory
+.tmp/
+# Agent execution artifacts
+*/superpowers/*
