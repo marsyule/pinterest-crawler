@@ -12,7 +12,7 @@ from pinterest_crawler.manifest import (
 from pinterest_crawler.models import (
     BoardManifest,
     PinDownload,
-    UserBoardManifestEntry,
+    UserTargetManifestEntry,
     UserManifest,
 )
 
@@ -40,15 +40,25 @@ def test_save_and_load_user_manifest_round_trips_v13_shape(tmp_path: Path) -> No
         discovery_status="complete",
         status="in_progress",
         error=None,
-        boards=[
-            UserBoardManifestEntry(
-                board_id="104",
-                board_url="https://www.pinterest.com/adryanlong/golden-hour/",
-                board_slug="golden-hour",
-                manifest_path="golden-hour/manifest.json",
+        targets=[
+            UserTargetManifestEntry(
+                kind="created",
+                target_id="adryanlong",
+                target_url="https://www.pinterest.com/adryanlong/_created/",
+                target_slug="created",
+                manifest_path="created/manifest.json",
+                status="complete",
+                error=None,
+            ),
+            UserTargetManifestEntry(
+                kind="saved_board",
+                target_id="104",
+                target_url="https://www.pinterest.com/adryanlong/golden-hour/",
+                target_slug="golden-hour",
+                manifest_path="saved/golden-hour/manifest.json",
                 status="in_progress",
                 error=None,
-            )
+            ),
         ],
     )
 
@@ -58,7 +68,8 @@ def test_save_and_load_user_manifest_round_trips_v13_shape(tmp_path: Path) -> No
     assert "schema_version" not in raw
     loaded = load_user_manifest(manifest_path)
     assert loaded.username == "adryanlong"
-    assert loaded.boards[0].status == "in_progress"
+    assert loaded.targets[0].kind == "created"
+    assert loaded.targets[1].status == "in_progress"
 
 
 def test_atomic_board_manifest_write_leaves_no_temp_file(tmp_path: Path) -> None:

@@ -31,7 +31,7 @@ def test_discover_user_boards_extracts_public_boards_from_ssr_state() -> None:
     profile = discover_user_boards(html, "https://www.pinterest.com/adryanlong/")
 
     assert profile.username == "adryanlong"
-    assert profile.user_url == "https://www.pinterest.com/adryanlong/"
+    assert profile.saved_url == "https://www.pinterest.com/adryanlong/_saved/"
     assert [board.name for board in profile.boards] == ["Coastal Calm", "Golden Hour"]
     assert profile.boards[0].url == "https://www.pinterest.com/adryanlong/coastal-calm/"
     assert profile.boards[1].pin_count == 20
@@ -75,7 +75,18 @@ def test_normalize_user_url_accepts_trailing_slash_and_query_string() -> None:
     normalized = normalize_user_url("https://www.pinterest.com/adryanlong/?foo=bar")
 
     assert normalized.username == "adryanlong"
-    assert normalized.url == "https://www.pinterest.com/adryanlong/"
+    assert normalized.user_url == "https://www.pinterest.com/adryanlong/"
+    assert normalized.created_url == "https://www.pinterest.com/adryanlong/_created/"
+    assert normalized.saved_url == "https://www.pinterest.com/adryanlong/_saved/"
+
+
+def test_normalize_user_url_accepts_missing_trailing_slash() -> None:
+    normalized = normalize_user_url("https://www.pinterest.com/dikaazriltarunaaa")
+
+    assert normalized.username == "dikaazriltarunaaa"
+    assert normalized.user_url == "https://www.pinterest.com/dikaazriltarunaaa/"
+    assert normalized.created_url == "https://www.pinterest.com/dikaazriltarunaaa/_created/"
+    assert normalized.saved_url == "https://www.pinterest.com/dikaazriltarunaaa/_saved/"
 
 
 def _user_html(boards: dict[str, JsonObject]) -> str:

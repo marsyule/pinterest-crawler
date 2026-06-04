@@ -32,7 +32,7 @@ The downloader should:
 ### Runtime
 
 - Python 3.11+
-- `uv` for dependency and command management
+- `uv` for recommended development dependency management
 
 ### Naming Conventions
 
@@ -100,19 +100,17 @@ Owns argument parsing and user-facing command flow.
 Initial command shape:
 
 ```bash
-uv run pinterest-crawler download https://www.pinterest.com/<user>/<board>/ --out downloads/<board>
+pinterest-crawler download https://www.pinterest.com/<user>/<board>/ --out downloads/<board>
 ```
 
-Module entry point shape, useful when the console script is not installed:
-
-```bash
-uv run python -m pinterest_crawler.cli download https://www.pinterest.com/<user>/<board>/ --out downloads/<board>
-```
+The internal `pinterest_crawler.cli` module is kept for development and tests, but it should not be
+documented as the user-facing command. When using `uv` without activating the virtual environment,
+the equivalent development command is prefixed with `uv run`.
 
 User-profile batch command:
 
 ```bash
-uv run python -m pinterest_crawler.cli download-user https://www.pinterest.com/<user>/ --out downloads/<user>
+pinterest-crawler download-user https://www.pinterest.com/<user>/ --out downloads/<user>
 ```
 
 Useful `0.1.0` options:

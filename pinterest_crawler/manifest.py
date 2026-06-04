@@ -13,7 +13,8 @@ from pinterest_crawler.models import (
     CrawlStatus,
     PinDownload,
     RecordStatus,
-    UserBoardManifestEntry,
+    UserTargetKind,
+    UserTargetManifestEntry,
     UserBoardStatus,
     UserManifest,
 )
@@ -77,9 +78,9 @@ def load_user_manifest(path: Path) -> UserManifest:
     if not isinstance(raw, dict):
         raise ValueError("User manifest must be a JSON object")
 
-    raw_boards = raw.get("boards")
-    if not isinstance(raw_boards, list):
-        raise ValueError("User manifest is missing boards")
+    raw_targets = raw.get("targets")
+    if not isinstance(raw_targets, list):
+        raise ValueError("User manifest is missing targets")
 
     return UserManifest(
         user_url=str(raw["user_url"]),
@@ -87,8 +88,10 @@ def load_user_manifest(path: Path) -> UserManifest:
         discovery_status=_crawl_status_from_str(str(raw["discovery_status"])),
         status=_crawl_status_from_str(str(raw["status"])),
         error=_optional_str(raw.get("error")),
-        boards=[
-            _user_board_entry_from_dict(board) for board in raw_boards if isinstance(board, dict)
+        targets=[
+            _user_target_entry_from_dict(target)
+            for target in raw_targets
+            if isinstance(target, dict)
         ],
     )
 
@@ -110,11 +113,12 @@ def _pin_from_dict(raw: dict[str, object]) -> PinDownload:
     )
 
 
-def _user_board_entry_from_dict(raw: dict[str, object]) -> UserBoardManifestEntry:
-    return UserBoardManifestEntry(
-        board_id=str(raw["board_id"]),
-        board_url=str(raw["board_url"]),
-        board_slug=str(raw["board_slug"]),
+def _user_target_entry_from_dict(raw: dict[str, object]) -> UserTargetManifestEntry:
+    return UserTargetManifestEntry(
+        kind=_user_target_kind_from_str(str(raw["kind"])),
+        target_id=str(raw["target_id"]),
+        target_url=str(raw["target_url"]),
+        target_slug=str(raw["target_slug"]),
         manifest_path=str(raw["manifest_path"]),
         status=_user_board_status_from_str(str(raw["status"])),
         error=_optional_str(raw.get("error")),
@@ -137,6 +141,12 @@ def _user_board_status_from_str(value: str) -> UserBoardStatus:
     if value in {"pending", "in_progress", "complete", "failed"}:
         return cast(UserBoardStatus, value)
     raise ValueError(f"Invalid user board status: {value}")
+
+
+def _user_target_kind_from_str(value: str) -> UserTargetKind:
+    if value in {"created", "saved_board"}:
+        return cast(UserTargetKind, value)
+    raise ValueError(f"Invalid user target kind: {value}")
 
 
 def _atomic_write_json(path: Path, data: object) -> None:

@@ -1,49 +1,71 @@
 # Pinterest Crawler
 
-> Download images from public Pinterest boards with SSR parsing and `BoardFeedResource` pagination.
+> Download images from public Pinterest boards, user `Created` feeds, and user saved boards.
 
 [![GitHub Stars](https://img.shields.io/github/stars/marsyule/pinterest-crawler?style=social)](https://github.com/marsyule/pinterest-crawler/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/marsyule/pinterest-crawler?style=social)](https://github.com/marsyule/pinterest-crawler/network/members)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
-![Package Manager](https://img.shields.io/badge/package%20manager-uv-6e56cf)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Pinterest public board downloader for Python 3.11+.
 
-The crawler targets public Pinterest boards and uses Pinterest's web data path:
+The crawler targets three public Pinterest surfaces:
 
-- `#__PWS_INITIAL_PROPS__` SSR JSON for board metadata and the initial feed.
-- `/resource/BoardFeedResource/get/` XHR pagination for remaining board pins.
+- normal public boards such as `https://www.pinterest.com/<user>/<board>/`
+- public user `Created` feeds such as `https://www.pinterest.com/<user>/_created/`
+- public saved boards discovered from a user's profile page
 
-It does not use Pinterest's deprecated v3 pidget endpoints or a public official API.
+It uses Pinterest's web data path rather than a public official API:
+
+- `#__PWS_INITIAL_PROPS__` SSR JSON for user-board discovery, board metadata, and initial board feed pages
+- `/resource/BoardFeedResource/get/` XHR pagination for board pins
+- `/resource/UserResource/get/` plus `/resource/UserActivityPinsResource/get/` for `Created` feeds
+
+It does not use Pinterest's deprecated v3 pidget endpoints.
 
 ## Features
 
 - Download images from public Pinterest boards
-- Crawl all public boards from a Pinterest user profile
-- Resume interrupted runs with per-board `manifest.json`
+- Crawl a user's public `Created` feed and saved boards in one batch
+- Download pins from a user's public `Created` feed
+- Re-discover user targets on each `download-user` run so stale `user_manifest.json` files do not hide new boards
+- Resume interrupted runs with per-target `manifest.json`
 - Retry failed image downloads with ranked candidate fallback
 - Stay HTTP-first, with optional Playwright bootstrap fallback when SSR or cookies are unavailable
 
 ## Quick Start
 
-Sync dependencies:
+Recommended development setup with `uv`:
 
 ```bash
 uv sync
 ```
 
+Standard Python setup without `uv`, using your current Python environment:
+
+```bash
+python -m pip install -e .
+```
+
 Download a single board:
 
 ```bash
-uv run pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
+pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
 ```
 
-Download all public boards from a user profile:
+Download a user's public `Created` feed and saved boards:
 
 ```bash
-uv run python -m pinterest_crawler.cli download-user https://www.pinterest.com/adryanlong/ --out downloads/adryanlong
+pinterest-crawler download-user https://www.pinterest.com/adryanlong/ --out downloads/adryanlong
 ```
+
+Download a user's public `Created` feed:
+
+```bash
+pinterest-crawler download-created https://www.pinterest.com/rileyaussies/_created/ --out downloads/rileyaussies-created
+```
+
+If you are using `uv` without activating the virtual environment, prefix commands with `uv run`.
 
 ## Setup
 
@@ -51,49 +73,64 @@ Playwright is used only as a bootstrap fallback when plain HTTP cannot obtain us
 or cookies. Install the Chromium browser if you want that fallback available:
 
 ```bash
-uv run playwright install chromium
+playwright install chromium
 ```
+
+With `uv`, use `uv run playwright install chromium`.
 
 ## Download a Board
 
 ```bash
-uv run pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
+pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
 ```
 
 Useful options:
 
 ```bash
-uv run pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour --retries 2
-uv run pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour --overwrite
-uv run pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour --no-playwright
+pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour --no-playwright
+pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour --dry-run
 ```
 
-If the console script is not installed in the current virtual environment, run the same command
-through the module entry point:
+The internal Python module is kept for development and tests, but regular usage should go through
+the `pinterest-crawler` command.
+
+## Download a User's Created Feed and Saved Boards
 
 ```bash
-uv run python -m pinterest_crawler.cli download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
+pinterest-crawler download-user https://www.pinterest.com/adryanlong/ --out downloads/adryanlong
 ```
 
-## Download All Public Boards for a User
+This command does two things:
 
-```bash
-uv run python -m pinterest_crawler.cli download-user https://www.pinterest.com/adryanlong/ --out downloads/adryanlong
-```
+- builds the user's canonical `Created` URL as `https://www.pinterest.com/<user>/_created/`
+- fetches the user's public profile page and discovers saved-board URLs from `initialReduxState.boards`
 
-This starts from the user's public profile page, reads public board URLs from
-`initialReduxState.boards`, and then runs the normal board downloader for each board.
+It then runs the `Created` downloader once and the normal board downloader once per saved board.
 
-The output directory is organized by board slug:
+The output directory is organized by target type:
 
 ```text
 downloads/adryanlong/user_manifest.json
-downloads/adryanlong/coastal-calm/manifest.json
-downloads/adryanlong/golden-hour/manifest.json
+downloads/adryanlong/created/manifest.json
+downloads/adryanlong/saved/coastal-calm/manifest.json
+downloads/adryanlong/saved/golden-hour/manifest.json
 ```
 
-`user_manifest.json` is the batch-level summary. Each board directory still has its own
-`manifest.json` with per-pin resume and retry state.
+`user_manifest.json` is the batch-level summary. It contains a `targets` list with one `created`
+entry and one `saved_board` entry per discovered public board. Each target directory still has its
+own `manifest.json` with per-pin resume and retry state.
+
+`download-user` always refreshes target discovery before it runs downloads. If a previous
+`user_manifest.json` only listed part of a user's current public content, rerunning the command in
+the same output directory will still discover newly visible saved boards.
+
+## Download a User's Public Created Feed
+
+```bash
+pinterest-crawler download-created https://www.pinterest.com/rileyaussies/_created/ --out downloads/rileyaussies-created
+```
+
+Use this when you want only the `Created` feed and do not want batch saved-board discovery.
 
 ## Naming
 
@@ -104,16 +141,14 @@ downloads/adryanlong/golden-hour/manifest.json
 
 ## Resume and Retry Behavior
 
-Each output directory contains a `manifest.json` file with board metadata, pin records, image
-candidates, attempted URLs, selected URL, local file path, status, and error details.
+Each board or created-feed output directory contains a `manifest.json` file with metadata, pin
+records, image candidates, attempted URLs, selected URL, local file path, status, and error
+details.
 
 Runs are resumable by default:
 
 - Existing successful records are reused when their local files still exist.
 - Failed records are retried on the next run.
-- `--overwrite` ignores successful existing files and downloads them again.
-- `--retries N` tries each image candidate up to `N + 1` times, except `403` and `404`
-  responses, which immediately fall through to the next candidate.
 - If the best image URL fails, the downloader tries lower-ranked image candidates before
   marking the pin as failed.
 

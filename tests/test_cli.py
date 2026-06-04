@@ -87,7 +87,7 @@ def test_download_user_command_passes_v13_options_to_batch_crawler(
             discovery_status="complete",
             status="complete",
             error=None,
-            boards=[],
+            targets=[],
         )
 
     monkeypatch.setattr(cli, "crawl_user_boards", fake_crawl_user_boards)
@@ -107,6 +107,57 @@ def test_download_user_command_passes_v13_options_to_batch_crawler(
     assert calls[0][2] == RuntimeConfig()
     assert calls[0][3] is False
     assert calls[0][4] is True
+
+
+def test_download_created_command_passes_options_to_created_crawler(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, Path, RuntimeConfig, bool, bool]] = []
+
+    def fake_crawl_created_feed(
+        created_url: str,
+        output_dir: Path,
+        config: RuntimeConfig,
+        *,
+        dry_run: bool,
+        use_playwright: bool,
+    ) -> BoardManifest:
+        calls.append((created_url, output_dir, config, dry_run, use_playwright))
+        return BoardManifest(
+            board_id="1103945064818071965",
+            board_url=created_url,
+            board_name="Riley A Created",
+            board_slug="rileyaussies-created",
+            scan_status="complete",
+            download_status="not_started",
+            next_bookmark=None,
+            pages_done=0,
+            accepted_pins=2,
+            reached_end=True,
+            error=None,
+            records=[],
+        )
+
+    monkeypatch.setattr(cli, "crawl_created_feed", fake_crawl_created_feed)
+
+    result = cli.main(
+        [
+            "download-created",
+            "https://www.pinterest.com/rileyaussies/_created/",
+            "--out",
+            str(tmp_path),
+            "--dry-run",
+            "--no-playwright",
+        ]
+    )
+
+    assert result == 0
+    assert calls[0][0] == "https://www.pinterest.com/rileyaussies/_created/"
+    assert calls[0][1] == tmp_path
+    assert calls[0][2] == RuntimeConfig()
+    assert calls[0][3] is True
+    assert calls[0][4] is False
 
 
 @pytest.mark.parametrize(

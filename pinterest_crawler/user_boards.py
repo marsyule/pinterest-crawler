@@ -17,7 +17,9 @@ class NormalizedUserUrl:
     """Normalized Pinterest user URL details."""
 
     username: str
-    url: str
+    user_url: str
+    created_url: str
+    saved_url: str
 
 
 @dataclass(frozen=True)
@@ -25,7 +27,7 @@ class UserBoards:
     """Public boards discovered from a Pinterest user profile page."""
 
     username: str
-    user_url: str
+    saved_url: str
     boards: list[Board]
 
 
@@ -44,11 +46,18 @@ def normalize_user_url(user_url: str) -> NormalizedUserUrl:
 
     parsed = urlparse(user_url)
     path_parts = [part for part in parsed.path.split("/") if part]
-    if len(path_parts) != 1:
+    if len(path_parts) == 1:
+        username = path_parts[0]
+    elif len(path_parts) == 2 and path_parts[1] in {"_saved", "_created"}:
+        username = path_parts[0]
+    else:
         raise ValueError("User URL must be a Pinterest profile URL")
-
-    username = path_parts[0]
-    return NormalizedUserUrl(username=username, url=f"{PINTEREST_BASE_URL}/{username}/")
+    return NormalizedUserUrl(
+        username=username,
+        user_url=f"{PINTEREST_BASE_URL}/{username}/",
+        created_url=f"{PINTEREST_BASE_URL}/{username}/_created/",
+        saved_url=f"{PINTEREST_BASE_URL}/{username}/_saved/",
+    )
 
 
 def discover_user_boards(html: str, user_url: str) -> UserBoards:
@@ -66,7 +75,7 @@ def discover_user_boards(html: str, user_url: str) -> UserBoards:
     state = extract_initial_state(html)
     boards = state.get("boards")
     if not isinstance(boards, dict):
-        return UserBoards(username=normalized.username, user_url=normalized.url, boards=[])
+        return UserBoards(username=normalized.username, saved_url=normalized.saved_url, boards=[])
 
     seen: set[str] = set()
     discovered: list[Board] = []
@@ -79,7 +88,9 @@ def discover_user_boards(html: str, user_url: str) -> UserBoards:
         seen.add(board.id)
         discovered.append(board)
 
-    return UserBoards(username=normalized.username, user_url=normalized.url, boards=discovered)
+    return UserBoards(
+        username=normalized.username, saved_url=normalized.saved_url, boards=discovered
+    )
 
 
 def _board_from_raw(raw_board: dict[str, JsonValue]) -> Board | None:

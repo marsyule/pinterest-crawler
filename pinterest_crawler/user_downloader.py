@@ -1,4 +1,4 @@
-"""Batch orchestration for downloading all public boards from a Pinterest user."""
+"""Batch orchestration for downloading a user's created feed and saved boards."""
 
 from __future__ import annotations
 
@@ -7,18 +7,18 @@ from pathlib import Path
 from typing import Protocol
 
 from pinterest_crawler.config import RuntimeConfig
+from pinterest_crawler.created_downloader import crawl_created_feed
 from pinterest_crawler.downloader import crawl_board
 from pinterest_crawler.http_client import PinterestHttpClient
 from pinterest_crawler.manifest import load_board_manifest, load_user_manifest, save_user_manifest
 from pinterest_crawler.models import (
-    Board,
     BoardManifest,
     CrawlStatus,
-    UserBoardManifestEntry,
+    UserTargetManifestEntry,
     UserBoardStatus,
     UserManifest,
 )
-from pinterest_crawler.user_boards import discover_user_boards
+from pinterest_crawler.user_boards import discover_user_boards, normalize_user_url
 
 
 class UserProfileClient(Protocol):
@@ -26,6 +26,38 @@ class UserProfileClient(Protocol):
 
     def fetch_user_html(self, user_url: str) -> str:
         """Fetch user profile HTML."""
+
+
+class CreatedCrawler(Protocol):
+    """Callable contract for created-feed downloads."""
+
+    def __call__(
+        self,
+        created_url: str,
+        output_dir: Path,
+        config: RuntimeConfig,
+        *,
+        dry_run: bool,
+        use_playwright: bool,
+        client: PinterestHttpClient | None = None,
+    ) -> BoardManifest:
+        """Download one created feed."""
+
+
+class SavedBoardCrawler(Protocol):
+    """Callable contract for saved-board downloads."""
+
+    def __call__(
+        self,
+        board_url: str,
+        output_dir: Path,
+        config: RuntimeConfig,
+        *,
+        dry_run: bool,
+        use_playwright: bool,
+        client: PinterestHttpClient | None = None,
+    ) -> BoardManifest:
+        """Download one saved board."""
 
 
 def crawl_user_boards(
@@ -36,17 +68,19 @@ def crawl_user_boards(
     dry_run: bool = False,
     use_playwright: bool = True,
     client: UserProfileClient | PinterestHttpClient | None = None,
-    board_crawler: object | None = None,
+    created_crawler: CreatedCrawler | None = None,
+    board_crawler: SavedBoardCrawler | None = None,
 ) -> UserManifest:
-    """Download all public boards discovered from a Pinterest user page.
+    """Download a user's created feed and public saved boards.
 
     Args:
         user_url: Pinterest user profile URL.
-        output_dir: Root directory for per-board output directories.
+        output_dir: Root directory for user output directories.
         config: Runtime crawl configuration.
         dry_run: Scan only when true.
-        use_playwright: Whether board scans may use Playwright fallback.
-        client: Optional profile/board client for tests.
+        use_playwright: Whether saved-board scans may use Playwright fallback.
+        client: Optional HTTP client for tests.
+        created_crawler: Optional callable replacing `crawl_created_feed` in tests.
         board_crawler: Optional callable replacing `crawl_board` in tests.
 
     Returns:
@@ -56,43 +90,46 @@ def crawl_user_boards(
     manifest_path = output_dir / "user_manifest.json"
     owns_client = client is None
     profile_client = client or PinterestHttpClient(config=config)
-    crawl_func = crawl_board if board_crawler is None else board_crawler
+    created_func: CreatedCrawler = (
+        crawl_created_feed if created_crawler is None else created_crawler
+    )
+    board_func: SavedBoardCrawler = crawl_board if board_crawler is None else board_crawler
 
     try:
         if manifest_path.exists():
-            user_manifest = load_user_manifest(manifest_path)
-        else:
-            user_manifest = _discover_boards(user_url, output_dir, profile_client)
-            save_user_manifest(manifest_path, user_manifest)
+            load_user_manifest(manifest_path)
 
-        if user_manifest.discovery_status != "complete":
-            user_manifest = _discover_boards(user_url, output_dir, profile_client)
-            save_user_manifest(manifest_path, user_manifest)
+        user_manifest = _discover_targets(user_url, output_dir, profile_client)
+        save_user_manifest(manifest_path, user_manifest)
 
-        boards: list[UserBoardManifestEntry] = []
-        for entry in user_manifest.boards:
-            updated = _process_board_entry(
+        targets: list[UserTargetManifestEntry] = []
+        for entry in user_manifest.targets:
+            updated = _process_target_entry(
                 entry,
                 output_dir,
                 config,
                 dry_run=dry_run,
                 use_playwright=use_playwright,
                 client=client if isinstance(client, PinterestHttpClient) else None,
-                board_crawler=crawl_func,
+                created_crawler=created_func,
+                board_crawler=board_func,
             )
-            boards.append(updated)
+            targets.append(updated)
             user_manifest = replace(
                 user_manifest,
-                boards=boards + user_manifest.boards[len(boards) :],
-                status=_user_status(boards + user_manifest.boards[len(boards) :], dry_run=dry_run),
+                targets=targets + user_manifest.targets[len(targets) :],
+                status=_user_status(
+                    targets + user_manifest.targets[len(targets) :],
+                    dry_run=dry_run,
+                ),
                 error=None,
             )
             save_user_manifest(manifest_path, user_manifest)
 
         final = replace(
             user_manifest,
-            boards=boards,
-            status=_user_status(boards, dry_run=dry_run),
+            targets=targets,
+            status=_user_status(targets, dry_run=dry_run),
             error=None,
         )
         save_user_manifest(manifest_path, final)
@@ -104,7 +141,7 @@ def crawl_user_boards(
             discovery_status="failed",
             status="failed",
             error=str(exc),
-            boards=[],
+            targets=[],
         )
         save_user_manifest(manifest_path, failed)
         return failed
@@ -113,76 +150,128 @@ def crawl_user_boards(
             profile_client.close()
 
 
-def _discover_boards(
+def _discover_targets(
     user_url: str,
     output_dir: Path,
     client: UserProfileClient,
 ) -> UserManifest:
     output_dir.mkdir(parents=True, exist_ok=True)
-    html = client.fetch_user_html(user_url)
-    profile = discover_user_boards(html, user_url)
-    entries = [_entry_for_board(output_dir, board) for board in profile.boards]
+    normalized = normalize_user_url(user_url)
+    user_html = client.fetch_user_html(normalized.user_url)
+    profile = discover_user_boards(user_html, normalized.user_url)
+    entries = [_created_entry(normalized.created_url)] + [
+        _entry_for_board(board) for board in profile.boards
+    ]
     return UserManifest(
-        user_url=profile.user_url,
+        user_url=normalized.user_url,
         username=profile.username,
         discovery_status="complete",
         status="not_started" if entries else "complete",
         error=None,
-        boards=entries,
+        targets=entries,
     )
 
 
-def _process_board_entry(
-    entry: UserBoardManifestEntry,
+def _process_target_entry(
+    entry: UserTargetManifestEntry,
     output_dir: Path,
     config: RuntimeConfig,
     *,
     dry_run: bool,
     use_playwright: bool,
     client: PinterestHttpClient | None,
-    board_crawler: object,
-) -> UserBoardManifestEntry:
+    created_crawler: CreatedCrawler,
+    board_crawler: SavedBoardCrawler,
+) -> UserTargetManifestEntry:
     manifest_path = _resolve_manifest_path(output_dir, entry.manifest_path)
 
-    existing = _load_matching_board_manifest(manifest_path, entry.board_id)
-    if existing is not None and _board_entry_status(existing, dry_run=dry_run) == "complete":
+    expected_manifest_id = entry.target_id if entry.kind == "saved_board" else None
+    existing = _load_matching_board_manifest(manifest_path, expected_manifest_id)
+    if existing is not None and _target_entry_status(existing, dry_run=dry_run) == "complete":
         return replace(entry, status="complete", error=None)
 
-    if not callable(board_crawler):
-        raise TypeError("board_crawler must be callable")
-    result = board_crawler(
-        entry.board_url,
+    result = _crawl_target(
+        entry,
         manifest_path.parent,
         config,
         dry_run=dry_run,
         use_playwright=use_playwright,
         client=client,
+        created_crawler=created_crawler,
+        board_crawler=board_crawler,
     )
     if not isinstance(result, BoardManifest):
-        raise ValueError("board_crawler must return a BoardManifest")
-    if result.board_id != entry.board_id:
+        raise ValueError("target crawler must return a BoardManifest")
+    if entry.kind == "saved_board" and result.board_id != entry.target_id:
         return replace(entry, status="failed", error="Board manifest ID mismatch")
-    return replace(entry, status=_board_entry_status(result, dry_run=dry_run), error=result.error)
+    return replace(entry, status=_target_entry_status(result, dry_run=dry_run), error=result.error)
 
 
-def _load_matching_board_manifest(path: Path, board_id: str) -> BoardManifest | None:
+def _crawl_target(
+    entry: UserTargetManifestEntry,
+    output_dir: Path,
+    config: RuntimeConfig,
+    *,
+    dry_run: bool,
+    use_playwright: bool,
+    client: PinterestHttpClient | None,
+    created_crawler: CreatedCrawler,
+    board_crawler: SavedBoardCrawler,
+) -> BoardManifest:
+    if entry.kind == "created":
+        return created_crawler(
+            entry.target_url,
+            output_dir,
+            config,
+            dry_run=dry_run,
+            use_playwright=use_playwright,
+            client=client,
+        )
+
+    return board_crawler(
+        entry.target_url,
+        output_dir,
+        config,
+        dry_run=dry_run,
+        use_playwright=use_playwright,
+        client=client,
+    )
+
+
+def _load_matching_board_manifest(path: Path, board_id: str | None) -> BoardManifest | None:
     if not path.exists():
         return None
     try:
         manifest = load_board_manifest(path)
     except (OSError, ValueError, KeyError):
         return None
-    if manifest.board_id != board_id:
+    if board_id is not None and manifest.board_id != board_id:
         return None
     return manifest
 
 
-def _entry_for_board(output_dir: Path, board: Board) -> UserBoardManifestEntry:
-    return UserBoardManifestEntry(
-        board_id=board.id,
-        board_url=board.url,
-        board_slug=board.slug,
-        manifest_path=str(Path(board.slug) / "manifest.json"),
+def _created_entry(created_url: str) -> UserTargetManifestEntry:
+    return UserTargetManifestEntry(
+        kind="created",
+        target_id="created",
+        target_url=created_url,
+        target_slug="created",
+        manifest_path=str(Path("created") / "manifest.json"),
+        status="pending",
+        error=None,
+    )
+
+
+def _entry_for_board(board: object) -> UserTargetManifestEntry:
+    board_id = getattr(board, "id")
+    board_url = getattr(board, "url")
+    board_slug = getattr(board, "slug")
+    return UserTargetManifestEntry(
+        kind="saved_board",
+        target_id=board_id,
+        target_url=board_url,
+        target_slug=board_slug,
+        manifest_path=str(Path("saved") / board_slug / "manifest.json"),
         status="pending",
         error=None,
     )
@@ -199,7 +288,7 @@ def _resolve_manifest_path(output_dir: Path, manifest_path: str) -> Path:
     return output_dir / path
 
 
-def _board_entry_status(manifest: BoardManifest, *, dry_run: bool) -> UserBoardStatus:
+def _target_entry_status(manifest: BoardManifest, *, dry_run: bool) -> UserBoardStatus:
     if manifest.scan_status == "failed" or manifest.download_status == "failed":
         return "failed"
     if dry_run:
@@ -209,14 +298,16 @@ def _board_entry_status(manifest: BoardManifest, *, dry_run: bool) -> UserBoardS
     return "in_progress"
 
 
-def _user_status(boards: list[UserBoardManifestEntry], *, dry_run: bool) -> CrawlStatus:
-    if not boards:
+def _user_status(targets: list[UserTargetManifestEntry], *, dry_run: bool) -> CrawlStatus:
+    if not targets:
         return "complete"
-    if any(board.status == "failed" for board in boards):
+    if any(target.status == "failed" for target in targets):
         return "failed"
     if dry_run:
-        return "complete" if all(board.status == "complete" for board in boards) else "in_progress"
-    if all(board.status == "complete" for board in boards):
+        return (
+            "complete" if all(target.status == "complete" for target in targets) else "in_progress"
+        )
+    if all(target.status == "complete" for target in targets):
         return "complete"
     return "in_progress"
 

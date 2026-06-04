@@ -11,6 +11,7 @@ JsonObject = dict[str, JsonValue]
 CrawlStatus = Literal["not_started", "in_progress", "complete", "failed"]
 RecordStatus = Literal["planned", "downloading", "success", "failed", "missing_file", "skipped"]
 UserBoardStatus = Literal["pending", "in_progress", "complete", "failed"]
+UserTargetKind = Literal["created", "saved_board"]
 
 
 @dataclass(frozen=True)
@@ -75,12 +76,13 @@ class BoardManifest:
 
 
 @dataclass(frozen=True)
-class UserBoardManifestEntry:
-    """User-level index entry for one board manifest."""
+class UserTargetManifestEntry:
+    """User-level index entry for one created or saved-board manifest."""
 
-    board_id: str
-    board_url: str
-    board_slug: str
+    kind: UserTargetKind
+    target_id: str
+    target_url: str
+    target_slug: str
     manifest_path: str
     status: UserBoardStatus
     error: str | None
@@ -95,4 +97,4 @@ class UserManifest:
     discovery_status: CrawlStatus
     status: CrawlStatus
     error: str | None
-    boards: list[UserBoardManifestEntry]
+    targets: list[UserTargetManifestEntry]

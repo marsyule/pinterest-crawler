@@ -10,6 +10,12 @@ import httpx
 
 from pinterest_crawler.board_feed import build_board_feed_headers, build_board_feed_params
 from pinterest_crawler.config import RuntimeConfig
+from pinterest_crawler.created_feed import (
+    build_created_feed_headers,
+    build_created_feed_params,
+    build_user_resource_headers,
+    build_user_resource_params,
+)
 from pinterest_crawler.models import JsonObject
 
 
@@ -71,6 +77,48 @@ class PinterestHttpClient:
         )
         response.raise_for_status()
         return response.text
+
+    def fetch_user_resource(self, created_url: str, username: str) -> JsonObject:
+        """Fetch `UserResource` for a Pinterest created page."""
+
+        self._wait_for_data_request()
+        response = self._client.get(
+            "https://www.pinterest.com/resource/UserResource/get/",
+            params=build_user_resource_params(created_url=created_url, username=username),
+            headers=build_user_resource_headers(created_url),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("UserResource response must be a JSON object")
+        return data
+
+    def fetch_user_activity_pins(
+        self,
+        *,
+        created_url: str,
+        username: str,
+        user_id: str,
+        bookmarks: list[str],
+    ) -> JsonObject:
+        """Fetch one `UserActivityPinsResource` page for a created feed."""
+
+        self._wait_for_data_request()
+        response = self._client.get(
+            "https://www.pinterest.com/resource/UserActivityPinsResource/get/",
+            params=build_created_feed_params(
+                user_id=user_id,
+                username=username,
+                source_url=f"/{created_url.split('pinterest.com/', 1)[-1].strip('/')}/",
+                bookmarks=bookmarks,
+            ),
+            headers=build_created_feed_headers(created_url),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("UserActivityPinsResource response must be a JSON object")
+        return data
 
     def fetch_board_feed(
         self,
