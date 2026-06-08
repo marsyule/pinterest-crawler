@@ -12,15 +12,29 @@ from pinterest_crawler.scanner import scan_board
 class FakeScanClient:
     """In-memory scanner client."""
 
-    def __init__(self, html: str, pages: list[JsonObject] | None = None) -> None:
+    def __init__(
+        self,
+        html: str,
+        pages: list[JsonObject] | None = None,
+        pin_html_by_id: dict[str, str] | None = None,
+    ) -> None:
         self.html = html
         self.pages = pages or []
+        self.pin_html_by_id = pin_html_by_id or {}
+        self.pin_html_requests: list[str] = []
         self.page_sizes: list[int] = []
         self.bookmarks: list[list[str]] = []
         self.bootstrap_called = False
 
     def fetch_board_html(self, board_url: str) -> str:
         return self.html
+
+    def fetch_pin_html(self, pin_id: str) -> str:
+        self.pin_html_requests.append(pin_id)
+        html = self.pin_html_by_id.get(pin_id)
+        if html is None:
+            raise RuntimeError(f"missing detail html for {pin_id}")
+        return html
 
     def fetch_board_feed(
         self,
@@ -40,7 +54,11 @@ class FakeScanClient:
 
 
 def test_scan_board_writes_planned_records_from_ssr(tmp_path: Path) -> None:
-    client = FakeScanClient(_board_html([_pin("pin-1")], next_bookmark="-end-"))
+    pin = _pin("pin-1")
+    client = FakeScanClient(
+        _board_html([pin], next_bookmark="-end-"),
+        pin_html_by_id={"pin-1": _pin_detail_html("pin-1")},
+    )
 
     manifest = scan_board(
         "https://www.pinterest.com/adryanlong/golden-hour/",
@@ -54,6 +72,13 @@ def test_scan_board_writes_planned_records_from_ssr(tmp_path: Path) -> None:
     assert manifest.records[0].image_candidates == [
         "https://i.pinimg.com/originals/aa/bb/pin-1.jpg"
     ]
+    assert manifest.records[0].pinterest_metadata == {
+        "board_feed": pin,
+        "pin_detail": {
+            "id": "pin-1",
+            "closeup_description": "Detail for pin-1",
+        },
+    }
     assert load_board_manifest(tmp_path / "manifest.json").accepted_pins == 1
 
 
@@ -84,6 +109,10 @@ def test_scan_board_resumes_from_checkpoint_and_uses_page_size(tmp_path: Path) -
                 "data": [_pin("pin-1"), _pin("pin-1"), _pin("pin-2")],
             }
         ],
+        pin_html_by_id={
+            "pin-1": _pin_detail_html("pin-1"),
+            "pin-2": _pin_detail_html("pin-2"),
+        },
     )
 
     manifest = scan_board(
@@ -109,6 +138,10 @@ def test_scan_board_enforces_limit_and_max_pages(tmp_path: Path) -> None:
                 "data": [_pin("pin-1"), _pin("pin-2")],
             }
         ],
+        pin_html_by_id={
+            "pin-1": _pin_detail_html("pin-1"),
+            "pin-2": _pin_detail_html("pin-2"),
+        },
     )
 
     manifest = scan_board(
@@ -142,7 +175,10 @@ def test_scan_board_retries_after_failed_placeholder_manifest(tmp_path: Path) ->
             records=[],
         ),
     )
-    client = FakeScanClient(_board_html([_pin("pin-1")], next_bookmark="-end-"))
+    client = FakeScanClient(
+        _board_html([_pin("pin-1")], next_bookmark="-end-"),
+        pin_html_by_id={"pin-1": _pin_detail_html("pin-1")},
+    )
 
     manifest = scan_board(
         "https://www.pinterest.com/adryanlong/golden-hour/",
@@ -154,6 +190,57 @@ def test_scan_board_retries_after_failed_placeholder_manifest(tmp_path: Path) ->
     assert manifest.scan_status == "complete"
     assert manifest.board_id == "104"
     assert [record.pin_id for record in manifest.records] == ["pin-1"]
+
+
+def test_scan_board_skips_pin_when_detail_metadata_cannot_be_parsed(
+    tmp_path: Path,
+) -> None:
+    client = FakeScanClient(
+        _board_html([_pin("pin-1"), _pin("pin-2")], next_bookmark="-end-"),
+        pin_html_by_id={
+            "pin-1": "<html>no relay payload</html>",
+            "pin-2": _pin_detail_html("pin-2"),
+        },
+    )
+
+    manifest = scan_board(
+        "https://www.pinterest.com/adryanlong/golden-hour/",
+        tmp_path,
+        RuntimeConfig(limit=2),
+        client=client,
+    )
+
+    assert [record.pin_id for record in manifest.records] == ["pin-2"]
+    assert manifest.accepted_pins == 1
+    assert client.pin_html_requests == ["pin-1", "pin-2"]
+
+
+def test_scan_board_skipped_pins_do_not_count_toward_limit(tmp_path: Path) -> None:
+    client = FakeScanClient(
+        _board_html([_pin("pin-1")], next_bookmark="bookmark-1"),
+        pages=[
+            {
+                "resource": {"options": {"bookmarks": ["-end-"]}},
+                "data": [_pin("pin-2")],
+            }
+        ],
+        pin_html_by_id={
+            "pin-1": "<html>no detail</html>",
+            "pin-2": _pin_detail_html("pin-2"),
+        },
+    )
+
+    manifest = scan_board(
+        "https://www.pinterest.com/adryanlong/golden-hour/",
+        tmp_path,
+        RuntimeConfig(limit=1, max_pages=1),
+        client=client,
+    )
+
+    assert [record.pin_id for record in manifest.records] == ["pin-2"]
+    assert manifest.accepted_pins == 1
+    assert manifest.pages_done == 1
+    assert client.bookmarks == [["bookmark-1"]]
 
 
 def _board_html(pins: list[JsonObject], *, next_bookmark: str) -> str:
@@ -188,5 +275,29 @@ def _pin(pin_id: str) -> JsonObject:
         "id": pin_id,
         "type": "pin",
         "board": {"id": "104"},
+        "grid_title": "Golden pin",
+        "description": "A saved Pinterest pin.",
+        "reaction_counts": {"1": 3},
         "images": {"orig": {"url": f"https://i.pinimg.com/originals/aa/bb/{pin_id}.jpg"}},
     }
+
+
+def _pin_detail_html(pin_id: str) -> str:
+    payload = {
+        "data": {
+            "v3GetPinQueryv2": {
+                "data": {
+                    "id": pin_id,
+                    "closeup_description": f"Detail for {pin_id}",
+                }
+            }
+        }
+    }
+    return (
+        "<script>"
+        "window.__PWS_RELAY_REGISTER_COMPLETED_REQUEST__("
+        '"request-id",'
+        f"{json.dumps(payload)}"
+        ");"
+        "</script>"
+    )

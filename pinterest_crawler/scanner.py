@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
@@ -17,6 +18,7 @@ from pinterest_crawler.http_client import PinterestHttpClient
 from pinterest_crawler.images import extract_image_candidates
 from pinterest_crawler.manifest import load_board_manifest, save_board_manifest
 from pinterest_crawler.models import BoardManifest, JsonObject, PinDownload
+from pinterest_crawler.pin_detail import PinDetailParseError, extract_pin_detail_metadata
 from pinterest_crawler.playwright_bootstrap import bootstrap_board_page
 from pinterest_crawler.ssr import (
     SsrParseError,
@@ -26,11 +28,17 @@ from pinterest_crawler.ssr import (
 )
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class BoardScanClient(Protocol):
     """HTTP behavior required by the board scanner."""
 
     def fetch_board_html(self, board_url: str) -> str:
         """Fetch a board page."""
+
+    def fetch_pin_html(self, pin_id: str) -> str:
+        """Fetch a public Pinterest pin detail page."""
 
     def fetch_board_feed(
         self,
@@ -139,7 +147,12 @@ def _create_manifest_from_ssr(
         board = resolve_board(state, board_url)
         initial_page = find_board_feed_resource(state, board.id)
         pins = filter_board_pins(initial_page.items, board.id)
-        records = _records_from_pins(pins, existing_pin_ids=set(), limit=config.limit)
+        records = _records_from_pins(
+            pins,
+            existing_pin_ids=set(),
+            limit=config.limit,
+            client=http_client,
+        )
         reached_end = initial_page.bookmarks == ["-end-"]
         scan_complete = reached_end or len(records) >= config.limit
         manifest = BoardManifest(
@@ -204,7 +217,12 @@ def _scan_remaining_pages(
         )
         page_pins = filter_board_pins(data_from_resource_response(response), current.board_id)
         remaining = config.limit - current.accepted_pins
-        new_records = _records_from_pins(page_pins, existing_pin_ids=seen, limit=remaining)
+        new_records = _records_from_pins(
+            page_pins,
+            existing_pin_ids=seen,
+            limit=remaining,
+            client=client,
+        )
         seen.update(record.pin_id for record in new_records)
 
         bookmarks = next_bookmarks_from_resource(response)
@@ -243,6 +261,7 @@ def _records_from_pins(
     *,
     existing_pin_ids: set[str],
     limit: int,
+    client: BoardScanClient,
 ) -> list[PinDownload]:
     records: list[PinDownload] = []
     for pin in pins:
@@ -252,6 +271,12 @@ def _records_from_pins(
         pin_id = str(raw_id)
         if pin_id in existing_pin_ids:
             continue
+
+        pin_detail = _fetch_pin_detail_metadata(client, pin_id)
+        if pin_detail is None:
+            existing_pin_ids.add(pin_id)
+            continue
+
         existing_pin_ids.add(pin_id)
         records.append(
             PinDownload(
@@ -263,11 +288,29 @@ def _records_from_pins(
                 local_path=None,
                 status="planned",
                 error=None,
+                pinterest_metadata={
+                    "board_feed": pin,
+                    "pin_detail": pin_detail,
+                },
             )
         )
         if len(records) >= limit:
             break
     return records
+
+
+def _fetch_pin_detail_metadata(client: BoardScanClient, pin_id: str) -> JsonObject | None:
+    try:
+        html = client.fetch_pin_html(pin_id)
+    except Exception as exc:
+        LOGGER.warning("Skipping pin %s because detail metadata fetch failed: %s", pin_id, exc)
+        return None
+
+    try:
+        return extract_pin_detail_metadata(html)
+    except PinDetailParseError as exc:
+        LOGGER.warning("Skipping pin %s because detail metadata could not be parsed: %s", pin_id, exc)
+        return None
 
 
 def _call_bootstrap(bootstrap: object, board_url: str) -> tuple[str, dict[str, str]]:
