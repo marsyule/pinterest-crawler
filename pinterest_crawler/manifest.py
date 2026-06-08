@@ -11,6 +11,7 @@ from typing import cast
 from pinterest_crawler.models import (
     BoardManifest,
     CrawlStatus,
+    JsonObject,
     PinDownload,
     RecordStatus,
     UserTargetKind,
@@ -110,6 +111,10 @@ def _pin_from_dict(raw: dict[str, object]) -> PinDownload:
         local_path=_optional_str(raw.get("local_path")),
         status=_record_status_from_str(str(raw["status"])),
         error=_optional_str(raw.get("error")),
+        pinterest_metadata=_required_json_object(
+            raw.get("pinterest_metadata"),
+            pin_id=str(raw["pin_id"]),
+        ),
     )
 
 
@@ -176,6 +181,14 @@ def _required_bool(value: object) -> bool:
 
 def _optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _required_json_object(value: object, *, pin_id: str) -> JsonObject:
+    if value is None:
+        raise ValueError(f"Record {pin_id} is missing pinterest_metadata")
+    if isinstance(value, dict):
+        return cast(JsonObject, value)
+    raise ValueError(f"Record {pin_id} pinterest_metadata must be an object")
 
 
 # Backwards-compatible aliases for import stability.

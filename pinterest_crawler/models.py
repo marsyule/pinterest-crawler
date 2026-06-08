@@ -55,6 +55,7 @@ class PinDownload:
     local_path: str | None
     status: RecordStatus
     error: str | None
+    pinterest_metadata: JsonObject
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from pinterest_crawler.manifest import (
     load_board_manifest,
     load_user_manifest,
@@ -30,6 +32,56 @@ def test_save_and_load_board_manifest_round_trips_manifest_shape(tmp_path: Path)
     assert loaded.scan_status == "complete"
     assert loaded.records[0].selected_image_url == "https://i.pinimg.com/originals/a.jpg"
     assert loaded.records[0].status == "success"
+
+
+def test_save_and_load_board_manifest_round_trips_required_nested_pinterest_metadata(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    manifest = _board_manifest()
+
+    save_board_manifest(manifest_path, manifest)
+
+    loaded = load_board_manifest(manifest_path)
+
+    assert loaded.records[0].pinterest_metadata == {
+        "board_feed": {
+            "id": "pin-1",
+            "description": "Saved from Pinterest.",
+            "images": {"orig": {"url": "https://i.pinimg.com/originals/a.jpg"}},
+        },
+        "pin_detail": {
+            "id": "pin-1",
+            "closeup_description": "Detail metadata.",
+            "origin_pinner": {"username": "adryanlong"},
+        },
+    }
+
+
+def test_load_board_manifest_raises_when_record_missing_pinterest_metadata(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    save_board_manifest(manifest_path, _board_manifest())
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del raw["records"][0]["pinterest_metadata"]
+    manifest_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Record pin-1 is missing pinterest_metadata"):
+        load_board_manifest(manifest_path)
+
+
+def test_load_board_manifest_raises_when_pinterest_metadata_is_not_object(
+    tmp_path: Path,
+) -> None:
+    manifest_path = tmp_path / "manifest.json"
+    save_board_manifest(manifest_path, _board_manifest())
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw["records"][0]["pinterest_metadata"] = []
+    manifest_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Record pin-1 pinterest_metadata must be an object"):
+        load_board_manifest(manifest_path)
 
 
 def test_save_and_load_user_manifest_round_trips_v13_shape(tmp_path: Path) -> None:
@@ -104,6 +156,18 @@ def _board_manifest() -> BoardManifest:
                 local_path="pin-1.jpg",
                 status="success",
                 error=None,
+                pinterest_metadata={
+                    "board_feed": {
+                        "id": "pin-1",
+                        "description": "Saved from Pinterest.",
+                        "images": {"orig": {"url": "https://i.pinimg.com/originals/a.jpg"}},
+                    },
+                    "pin_detail": {
+                        "id": "pin-1",
+                        "closeup_description": "Detail metadata.",
+                        "origin_pinner": {"username": "adryanlong"},
+                    },
+                },
             )
         ],
     )
