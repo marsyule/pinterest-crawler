@@ -78,6 +78,17 @@ def test_scan_created_feed_writes_planned_records_from_initial_page(tmp_path: Pa
             "closeup_description": "Detail for pin-1",
         },
     }
+    assert manifest.pinterest_metadata == {
+        "user": {
+            "id": "1103945064818071965",
+            "username": "rileyaussies",
+            "full_name": "Riley A",
+            "pin_count": 22,
+            "last_pin_save_time": "Tue, 28 Apr 2026 10:47:10 +0000",
+            "created_at": "Tue, 14 Apr 2026 08:21:32 +0000",
+            "eligible_profile_tabs": [{"name": "Created", "tab_type": 1}],
+        }
+    }
     assert load_board_manifest(tmp_path / "manifest.json").accepted_pins == 1
 
 
@@ -211,6 +222,8 @@ def _user_resource() -> JsonObject:
                 "username": "rileyaussies",
                 "full_name": "Riley A",
                 "pin_count": 22,
+                "last_pin_save_time": "Tue, 28 Apr 2026 10:47:10 +0000",
+                "created_at": "Tue, 14 Apr 2026 08:21:32 +0000",
                 "eligible_profile_tabs": [{"name": "Created", "tab_type": 1}],
             }
         }

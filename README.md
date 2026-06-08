@@ -50,7 +50,7 @@ python -m pip install -e .
 Download a single board:
 
 ```bash
-pinterest-crawler download https://www.pinterest.com/chumq9921/Outfits/ --out downloads/Outfits
+pinterest-crawler download https://www.pinterest.com/chumq9921/outfits/ --out downloads/outfits
 ```
 
 Download a user's public `Created` feed and saved boards:

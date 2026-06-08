@@ -29,6 +29,7 @@ class UserBoards:
     username: str
     saved_url: str
     boards: list[Board]
+    pinterest_metadata: JsonObject
 
 
 def normalize_user_url(user_url: str) -> NormalizedUserUrl:
@@ -75,7 +76,12 @@ def discover_user_boards(html: str, user_url: str) -> UserBoards:
     state = extract_initial_state(html)
     boards = state.get("boards")
     if not isinstance(boards, dict):
-        return UserBoards(username=normalized.username, saved_url=normalized.saved_url, boards=[])
+        return UserBoards(
+            username=normalized.username,
+            saved_url=normalized.saved_url,
+            boards=[],
+            pinterest_metadata=_user_metadata(state, normalized.username),
+        )
 
     seen: set[str] = set()
     discovered: list[Board] = []
@@ -89,7 +95,10 @@ def discover_user_boards(html: str, user_url: str) -> UserBoards:
         discovered.append(board)
 
     return UserBoards(
-        username=normalized.username, saved_url=normalized.saved_url, boards=discovered
+        username=normalized.username,
+        saved_url=normalized.saved_url,
+        boards=discovered,
+        pinterest_metadata=_user_metadata(state, normalized.username),
     )
 
 
@@ -116,7 +125,21 @@ def _board_from_raw(raw_board: dict[str, JsonValue]) -> Board | None:
         slug=_slug_from_url(raw_url),
         pin_count=_optional_int(board_data.get("pin_count")),
         privacy="public",
+        pinterest_metadata={"board": board_data},
     )
+
+
+def _user_metadata(state: JsonObject, username: str) -> JsonObject:
+    users = state.get("users")
+    if not isinstance(users, dict):
+        return {}
+    for raw_user in users.values():
+        if not isinstance(raw_user, dict):
+            continue
+        user_data = _unwrap_data(raw_user)
+        if user_data.get("username") == username:
+            return {"user": user_data}
+    return {}
 
 
 def _unwrap_data(raw: dict[str, JsonValue]) -> JsonObject:

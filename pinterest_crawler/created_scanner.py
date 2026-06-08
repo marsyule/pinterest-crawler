@@ -129,6 +129,7 @@ def _create_manifest(
             reached_end=reached_end,
             error=None,
             records=records,
+            pinterest_metadata=profile.pinterest_metadata,
         )
         save_board_manifest(manifest_path, manifest)
         return manifest

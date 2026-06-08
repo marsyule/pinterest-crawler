@@ -169,6 +169,7 @@ def _discover_targets(
         status="not_started" if entries else "complete",
         error=None,
         targets=entries,
+        pinterest_metadata=profile.pinterest_metadata,
     )
 
 

@@ -79,6 +79,22 @@ def test_scan_board_writes_planned_records_from_ssr(tmp_path: Path) -> None:
             "closeup_description": "Detail for pin-1",
         },
     }
+    assert manifest.pinterest_metadata == {
+        "board": {
+            "id": "104",
+            "name": "Golden Hour",
+            "url": "/adryanlong/golden-hour/",
+            "pin_count": 1,
+            "privacy": "public",
+            "created_at": "Fri, 05 Jun 2026 08:10:52 +0000",
+            "board_order_modified_at": "Fri, 05 Jun 2026 08:11:04 +0000",
+            "cover_pin": {
+                "pin_id": "pin-1",
+                "image_signature": "aa-bb",
+                "timestamp": 1780647060,
+            },
+        }
+    }
     assert load_board_manifest(tmp_path / "manifest.json").accepted_pins == 1
 
 
@@ -254,6 +270,13 @@ def _board_html(pins: list[JsonObject], *, next_bookmark: str) -> str:
                         "url": "/adryanlong/golden-hour/",
                         "pin_count": len(pins),
                         "privacy": "public",
+                        "created_at": "Fri, 05 Jun 2026 08:10:52 +0000",
+                        "board_order_modified_at": "Fri, 05 Jun 2026 08:11:04 +0000",
+                        "cover_pin": {
+                            "pin_id": "pin-1",
+                            "image_signature": "aa-bb",
+                            "timestamp": 1780647060,
+                        },
                     }
                 }
             },

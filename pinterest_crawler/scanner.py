@@ -168,6 +168,7 @@ def _create_manifest_from_ssr(
             reached_end=reached_end,
             error=None,
             records=records,
+            pinterest_metadata=board.pinterest_metadata,
         )
         save_board_manifest(manifest_path, manifest)
         return manifest

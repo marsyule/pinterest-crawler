@@ -101,6 +101,7 @@ def resolve_board(state: JsonObject, board_url: str) -> Board:
             slug=_slug_from_path(raw_url),
             pin_count=_optional_int(board_data.get("pin_count")),
             privacy=_optional_str(board_data.get("privacy")),
+            pinterest_metadata={"board": board_data},
         )
 
     raise ValueError("Board metadata not found for requested URL")

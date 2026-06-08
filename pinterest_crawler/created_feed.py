@@ -32,6 +32,7 @@ class CreatedProfile:
     created_url: str
     slug: str
     pin_count: int | None
+    pinterest_metadata: JsonObject
 
 
 def normalize_created_url(created_url: str) -> NormalizedCreatedUrl:
@@ -72,6 +73,7 @@ def discover_created_profile(response: JsonObject, created_url: str) -> CreatedP
         created_url=normalized.url,
         slug=normalized.slug,
         pin_count=_optional_int(user_data.get("pin_count")),
+        pinterest_metadata={"user": user_data},
     )
 
 

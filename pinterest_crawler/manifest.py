@@ -63,6 +63,7 @@ def load_board_manifest(path: Path) -> BoardManifest:
         reached_end=_required_bool(raw.get("reached_end")),
         error=_optional_str(raw.get("error")),
         records=[_pin_from_dict(record) for record in raw_records if isinstance(record, dict)],
+        pinterest_metadata=_json_object_or_empty(raw.get("pinterest_metadata")),
     )
 
 
@@ -94,6 +95,7 @@ def load_user_manifest(path: Path) -> UserManifest:
             for target in raw_targets
             if isinstance(target, dict)
         ],
+        pinterest_metadata=_json_object_or_empty(raw.get("pinterest_metadata")),
     )
 
 
@@ -189,6 +191,12 @@ def _required_json_object(value: object, *, pin_id: str) -> JsonObject:
     if isinstance(value, dict):
         return cast(JsonObject, value)
     raise ValueError(f"Record {pin_id} pinterest_metadata must be an object")
+
+
+def _json_object_or_empty(value: object) -> JsonObject:
+    if isinstance(value, dict):
+        return cast(JsonObject, value)
+    return {}
 
 
 # Backwards-compatible aliases for import stability.

@@ -35,6 +35,13 @@ def test_discover_user_boards_extracts_public_boards_from_ssr_state() -> None:
     assert [board.name for board in profile.boards] == ["Coastal Calm", "Golden Hour"]
     assert profile.boards[0].url == "https://www.pinterest.com/adryanlong/coastal-calm/"
     assert profile.boards[1].pin_count == 20
+    assert profile.pinterest_metadata == {
+        "user": {
+            "id": "user-1",
+            "username": "adryanlong",
+            "last_pin_save_time": "Fri, 05 Jun 2026 08:11:06 +0000",
+        }
+    }
 
 
 def test_discover_user_boards_filters_invalid_private_and_duplicate_boards() -> None:
@@ -90,7 +97,18 @@ def test_normalize_user_url_accepts_missing_trailing_slash() -> None:
 
 
 def _user_html(boards: dict[str, JsonObject]) -> str:
-    props = {"initialReduxState": {"boards": boards}}
+    props = {
+        "initialReduxState": {
+            "boards": boards,
+            "users": {
+                "user-1": {
+                    "id": "user-1",
+                    "username": "adryanlong",
+                    "last_pin_save_time": "Fri, 05 Jun 2026 08:11:06 +0000",
+                }
+            },
+        }
+    }
     return (
         f'<html><body><script id="__PWS_INITIAL_PROPS__">{json.dumps(props)}</script></body></html>'
     )

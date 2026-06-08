@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -33,6 +33,7 @@ class Board:
     slug: str
     pin_count: int | None
     privacy: str | None
+    pinterest_metadata: JsonObject = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,7 @@ class BoardManifest:
     reached_end: bool
     error: str | None
     records: list[PinDownload]
+    pinterest_metadata: JsonObject = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -99,3 +101,4 @@ class UserManifest:
     status: CrawlStatus
     error: str | None
     targets: list[UserTargetManifestEntry]
+    pinterest_metadata: JsonObject = field(default_factory=dict)

@@ -108,6 +108,13 @@ def test_crawl_user_boards_writes_user_manifest_and_calls_created_and_each_saved
 
     loaded = load_user_manifest(tmp_path / "user_manifest.json")
     assert loaded.username == "adryanlong"
+    assert loaded.pinterest_metadata == {
+        "user": {
+            "id": "user-1",
+            "username": "adryanlong",
+            "last_pin_save_time": "Fri, 05 Jun 2026 08:11:06 +0000",
+        }
+    }
     assert [target.kind for target in loaded.targets] == ["created", "saved_board", "saved_board"]
     assert [target.status for target in loaded.targets] == ["complete", "complete", "complete"]
 
@@ -389,7 +396,18 @@ def _user_html(boards: list[dict[str, object]] | dict[str, dict[str, object]]) -
         board_map = {str(index): board for index, board in enumerate(boards)}
     else:
         board_map = boards
-    props = {"initialReduxState": {"boards": board_map}}
+    props = {
+        "initialReduxState": {
+            "boards": board_map,
+            "users": {
+                "user-1": {
+                    "id": "user-1",
+                    "username": "adryanlong",
+                    "last_pin_save_time": "Fri, 05 Jun 2026 08:11:06 +0000",
+                }
+            },
+        }
+    }
     return f'<script id="__PWS_INITIAL_PROPS__">{json.dumps(props)}</script>'
 
 
