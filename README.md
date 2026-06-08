@@ -50,19 +50,19 @@ python -m pip install -e .
 Download a single board:
 
 ```bash
-pinterest-crawler download https://www.pinterest.com/adryanlong/golden-hour/ --out downloads/golden-hour
+pinterest-crawler download https://www.pinterest.com/chumq9921/Outfits/ --out downloads/Outfits
 ```
 
 Download a user's public `Created` feed and saved boards:
 
 ```bash
-pinterest-crawler download-user https://www.pinterest.com/adryanlong/ --out downloads/adryanlong
+pinterest-crawler download-user https://www.pinterest.com/chumq9921/ --out downloads/chumq9921
 ```
 
 Download a user's public `Created` feed:
 
 ```bash
-pinterest-crawler download-created https://www.pinterest.com/rileyaussies/_created/ --out downloads/rileyaussies-created
+pinterest-crawler download-created https://www.pinterest.com/chumq9921/_created/ --out downloads/chumq9921-created
 ```
 
 If you are using `uv` without activating the virtual environment, prefix commands with `uv run`.
