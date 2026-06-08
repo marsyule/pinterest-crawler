@@ -117,4 +117,4 @@ def _extract_detail_data(payload: JsonObject) -> JsonObject | None:
     detail = query.get("data")
     if not isinstance(detail, dict):
         raise PinDetailParseError("v3GetPinQueryv2.data must be a JSON object")
-    return cast(JsonObject, detail)
+    return detail

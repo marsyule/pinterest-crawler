@@ -186,6 +186,10 @@ def _record(
         local_path=local_path,
         status=status,  # type: ignore[arg-type]
         error=None,
+        pinterest_metadata={
+            "board_feed": {"id": pin_id},
+            "pin_detail": {"id": pin_id},
+        },
     )
 
 

@@ -264,7 +264,9 @@ def _fetch_pin_detail_metadata(client: CreatedScanClient, pin_id: str) -> JsonOb
     try:
         return extract_pin_detail_metadata(html)
     except PinDetailParseError as exc:
-        LOGGER.warning("Skipping pin %s because detail metadata could not be parsed: %s", pin_id, exc)
+        LOGGER.warning(
+            "Skipping pin %s because detail metadata could not be parsed: %s", pin_id, exc
+        )
         return None
 
 
