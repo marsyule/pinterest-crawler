@@ -78,6 +78,24 @@ class PinterestHttpClient:
         response.raise_for_status()
         return response.text
 
+    def fetch_pin_html(self, pin_id: str) -> str:
+        """Fetch the public Pinterest pin detail page HTML.
+
+        Args:
+            pin_id: Pinterest pin ID.
+
+        Returns:
+            Raw pin detail page HTML.
+        """
+
+        self._wait_for_data_request()
+        response = self._client.get(
+            f"https://www.pinterest.com/pin/{pin_id}/",
+            headers={"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+        )
+        response.raise_for_status()
+        return response.text
+
     def fetch_user_resource(self, created_url: str, username: str) -> JsonObject:
         """Fetch `UserResource` for a Pinterest created page."""
 
