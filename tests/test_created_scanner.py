@@ -179,6 +179,30 @@ def test_scan_created_feed_skips_pin_when_detail_metadata_cannot_be_parsed(
     assert client.pin_html_requests == ["pin-1", "pin-2"]
 
 
+def test_scan_created_feed_skipped_pins_do_not_count_toward_limit(tmp_path: Path) -> None:
+    client = FakeCreatedScanClient(
+        _user_resource(),
+        _created_page([_created_pin("pin-1")], next_bookmark="bookmark-1"),
+        pages=[_created_page([_created_pin("pin-2")], next_bookmark="-end-")],
+        pin_html_by_id={
+            "pin-1": "<html>no detail</html>",
+            "pin-2": _pin_detail_html("pin-2"),
+        },
+    )
+
+    manifest = scan_created_feed(
+        "https://www.pinterest.com/rileyaussies/_created/",
+        tmp_path,
+        RuntimeConfig(limit=1, max_pages=1),
+        client=client,
+    )
+
+    assert [record.pin_id for record in manifest.records] == ["pin-2"]
+    assert manifest.accepted_pins == 1
+    assert manifest.pages_done == 1
+    assert client.page_bookmarks == [[], ["bookmark-1"]]
+
+
 def _user_resource() -> JsonObject:
     return {
         "resource_response": {
